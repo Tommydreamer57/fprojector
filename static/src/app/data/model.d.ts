@@ -1,26 +1,29 @@
 // ENUMS
 
-export enum FrequencyEnum {
-  ONCE = "once",
-  DAILY = "daily",
-  WEEKLY = "weekly",
-  BIWEEKLY = "biweekly",
-  MONTHLY = "monthly",
-  YEARLY = "yearly",
-  CUSTOM = "custom",
-}
+export type FrequencyEnum =
+  | "once"
+  | "daily"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "yearly"
+  | "custom";
 
 // BASE INTERFACES
+
+export type KeyMap<T, U> = { [K in keyof T]: U };
 
 export interface ParameterInterface {
   parameterId: string;
   parameterName: string;
   value: number;
-  symbol: string;
+  key: string;
   description?: string;
   // Foreign keys
   userId: string;
 }
+
+export type ParameterInterfaceMap<T> = KeyMap<T, ParameterInterface>;
 
 export interface SegmentInterface {
   segmentId: string;
