@@ -3,6 +3,20 @@
 An application for projecting personal finances via parameters against
 benchmarks.
 
+# Overview
+
+## Purpose
+
+Evaluate home purchaseability timelines based on savings projections and
+affordability benchmarks.
+
+## Input
+
+Users can define their current savings and future saving plans. Users can also
+define dynamic variables that may impact future savings.
+
+## Output
+
 # Data model
 
 ## Types

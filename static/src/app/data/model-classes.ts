@@ -1,308 +1,274 @@
-import { Equation } from "@app/data/equation";
 import {
-  AccountInterface,
-  FrequencyEnum,
+  ArgumentsInterface,
+  EvaluatedExpressionInterface,
+  EvaluatedExpressionMapInterface,
+  ExpressionInterface,
+  ExpressionMapInterface,
+  KeyedMap,
   ParameterInterface,
-  SegmentInterface,
-  StreamInterface,
+  ParameterMapInterface,
 } from "@app/data/model";
-import { v4 as uuid } from "uuid";
+import * as mathjs from "mathjs";
 
-// PARAMETERS
+const MAX_CARDINALITY = 100;
 
-type KeyMap<T, U> = { [K in keyof T]: U };
+const getDependenciesFromExpression = (expression: string): string[] => {
+  const node = mathjs.parse(expression);
+  const variables: string[] = [];
 
-type ParameterParamsInterface = Omit<
-  ParameterInterface,
-  "parameterId" | "key" | "userId"
->;
-
-type ParameterParamsMapInterface<T> = KeyMap<T, ParameterParamsInterface>;
-
-type ParameterMapInterface<T> = KeyMap<T, Parameter>;
-
-export class Parameter implements ParameterInterface {
-  parameterId: string;
-  parameterName: string;
-  value: number;
-  key: string;
-  description?: string;
-  userId: string;
-
-  /**
-   * Parameter keys must match the following regex
-   * 1. Must start with an alphabetical character
-   * 2. Must end with an alphanumerical character
-   * 3. May otherwise contain underscores
-   * 4. Must contain at least 2 characters
-   */
-  static keyRegex = /^[a-z][a-z0-9_]*[a-z0-9]$/;
-
-  static validateKey = (key: string): string => {
-    if (!key.match(Parameter.keyRegex)) {
-      throw new Error(
-        `Parameter key "${key}" must match regex: ${Parameter.keyRegex}`
-      );
+  node.traverse((node: mathjs.MathNode) => {
+    if (node instanceof mathjs.SymbolNode) {
+      variables.push(node.name);
     }
-    return key;
-  };
-
-  constructor({
-    parameterId,
-    parameterName,
-    value,
-    key,
-    description,
-    userId,
-  }: ParameterInterface) {
-    this.parameterId = parameterId;
-    this.parameterName = parameterName;
-    this.value = value;
-    this.key = Parameter.validateKey(key);
-    this.description = description;
-    this.userId = userId;
-  }
-
-  toString = () => this.key;
-
-  getScopeObject = (): { [key: string]: number } => ({
-    [this.key]: this.value,
   });
-}
 
-export class ParameterMap<T> {
-  parameters: ParameterMapInterface<T>;
-  keys: (keyof T)[];
-  parametersList: Parameter[];
+  return variables;
+};
 
-  constructor(userId: string, parameters: ParameterParamsMapInterface<T>) {
-    this.keys = [];
-    this.parametersList = [];
-    const paramsPartial: Partial<ParameterMapInterface<T>> = {};
-    for (let key in parameters) {
-      this.keys.push(key);
-      paramsPartial[key] = new Parameter({
-        ...parameters[key],
-        key,
-        userId,
-        parameterId: uuid(),
-      });
-      this.parametersList.push(paramsPartial[key]);
+const validateScopeObject = <T>(
+  args: Partial<KeyedMap<T, number>>,
+  dependencies: (keyof T)[]
+): void => {
+  for (const key of dependencies) {
+    if (!(key in args)) {
+      throw new Error(
+        `Scope object missing key: "${String(key)}": ["${Object.keys(args).join(
+          '", "'
+        )}"]`
+      );
     }
-    this.parameters = paramsPartial as ParameterMapInterface<T>;
   }
-}
-
-// SEGMENT
-
-type SegmentParams = Omit<
-  SegmentInterface,
-  | "segmentId"
-  | "valueParameter"
-  | "expirationSumParameter"
-  | "userId"
-  | "accountId"
-  | "streamId"
-  | "previousSegmentId"
-  | "nextSegmentId"
-> & {
-  valueParameter: string;
-  expirationSumParameter?: string;
 };
 
-export class Segment<T> implements SegmentInterface {
-  stream: Stream<T>;
-  segmentId: string;
-  segmentName?: string;
-  startDate?: string;
-  frequencyInterval: FrequencyEnum;
-  customFrequencyIntervalDays?: number;
-  valueParameter: string;
-  expirationSumParameter?: string;
-  expirationDate?: string;
-  expirationDays?: number;
-  expirationIntervals?: number;
-  userId: string;
-  accountId: string;
-  streamId: string;
-  previousSegmentId?: string;
-  nextSegmentId?: string;
-
-  evaluatedValue: number;
-  evaluatedExpirationSumValue?: number;
+class EvaluatedExpression<T> implements EvaluatedExpressionInterface<T> {
+  key: keyof T;
+  name: string;
+  dependencies: (keyof T)[];
+  expression: string;
+  arguments: ArgumentsInterface<T>;
+  value: number;
 
   constructor(
-    stream: Stream<T>,
-    {
-      segmentName,
-      startDate,
-      frequencyInterval,
-      customFrequencyIntervalDays,
-      valueParameter,
-      expirationSumParameter,
-      expirationDate,
-      expirationDays,
-      expirationIntervals,
-    }: SegmentParams
+    expression: Expression<T>,
+    args: Partial<KeyedMap<T, EvaluatedExpression<T>>>
   ) {
-    this.stream = stream;
-    this.userId = stream.userId;
-    this.accountId = stream.accountId;
-    this.streamId = stream.streamId;
-    this.segmentId = uuid();
-    this.segmentName = segmentName;
-    this.startDate = startDate;
-    this.frequencyInterval = frequencyInterval;
-    this.customFrequencyIntervalDays = customFrequencyIntervalDays;
-    this.valueParameter = valueParameter;
-    this.expirationSumParameter = expirationSumParameter;
-    this.expirationDate = expirationDate;
-    this.expirationDays = expirationDays;
-    this.expirationIntervals = expirationIntervals;
-    // this.previousSegmentId = previousSegmentId;
-    // this.nextSegmentId = nextSegmentId;
+    this.key = expression.key;
+    this.name = expression.name;
+    this.expression = expression.expression;
+    this.arguments = this._convertArguments(args);
 
-    this.evaluatedValue = this.evaluateValue();
-    this.evaluatedExpirationSumValue = this.evaluateExpirationSumValue();
+    this.dependencies = getDependenciesFromExpression(
+      this.expression
+    ) as (keyof T)[];
+
+    validateScopeObject(this.arguments, this.dependencies);
+
+    this.value = mathjs.evaluate(this.expression, this.arguments);
   }
 
-  getExpirationSumValueEquation = () => {
-    if (this.expirationSumParameter)
-      return new Equation(
-        this.expirationSumParameter,
-        this.stream.account.dataset.parameters
-      );
+  private _convertArguments = (
+    args: Partial<KeyedMap<T, EvaluatedExpression<T>>>
+  ): ArgumentsInterface<T> => {
+    const result: ArgumentsInterface<T> = {};
+    let key: keyof T;
+    for (key in args) {
+      if (args[key] instanceof EvaluatedExpression) {
+        // why the question mark typescript????
+        result[key] = args[key]?.value;
+      }
+    }
+    return result;
   };
 
-  evaluateExpirationSumValue = () =>
-    this.getExpirationSumValueEquation()?.evaluate();
-
-  getValueEquation = () =>
-    new Equation(this.valueParameter, this.stream.account.dataset.parameters);
-
-  evaluateValue = () => this.getValueEquation().evaluate();
+  toString = () => `"${String(this.key)}" = ${this.expression}`;
 }
 
-// STREAM
+class Expression<T> implements ExpressionInterface<T> {
+  key: keyof T;
+  name: string;
+  dependencies: (keyof T)[];
+  expression: string;
 
-type StreamParams = Omit<
-  StreamInterface,
-  "streamId" | "expirationSumParameter" | "userId" | "accountId" | "segments"
-> & {
-  expirationSumParameter?: string;
-  segments: SegmentParams[];
-};
+  constructor(parameter: Parameter<T>, expression: string) {
+    this.key = parameter.key;
+    this.name = parameter.name;
+    this.expression = expression;
 
-export class Stream<T> implements StreamInterface {
-  account: Account<T>;
-  streamId: string;
-  streamName?: string;
-  expirationSumParameter?: string;
-  expirationDate?: string;
-  expirationDays?: number;
-  userId: string;
-  accountId: string;
-  segments: Segment<T>[];
-
-  evaluatedExpirationSumValue?: number;
-
-  constructor(
-    account: Account<T>,
-    {
-      streamName,
-      expirationSumParameter,
-      expirationDate,
-      expirationDays,
-      segments,
-    }: StreamParams
-  ) {
-    this.account = account;
-    this.userId = this.account.userId;
-    this.accountId = this.account.accountId;
-    this.streamId = uuid();
-    this.streamName = streamName;
-    this.expirationSumParameter = expirationSumParameter;
-    this.expirationDate = expirationDate;
-    this.expirationDays = expirationDays;
-    this.segments = segments.map(segment => new Segment(this, segment));
-
-    this.evaluatedExpirationSumValue = this.evaluateExpirationSumValue();
+    this.dependencies = getDependenciesFromExpression(
+      this.expression
+    ) as (keyof T)[];
   }
 
-  getExpirationSumValueEquation = () => {
-    if (this.expirationSumParameter)
-      return new Equation(
-        this.expirationSumParameter,
-        this.account.dataset.parameters
+  evaluate = (
+    args: Partial<KeyedMap<T, EvaluatedExpression<T>>> = {}
+  ): EvaluatedExpression<T> => new EvaluatedExpression(this, args);
+}
+
+type ParameterArgumentInterface<T> = Omit<
+  ParameterInterface<T>,
+  "key" | "dependencies" | "expressions"
+> & {
+  expressions: string[];
+};
+
+class Parameter<T> implements ParameterInterface<T> {
+  key: keyof T;
+  name: string;
+  dependencies: (keyof T)[];
+  expressions: Expression<T>[];
+
+  constructor(
+    key: keyof T,
+    { name, expressions }: ParameterArgumentInterface<T>
+  ) {
+    this.key = key;
+    this.name = name;
+    this.expressions = expressions.map(exp => new Expression(this, exp));
+
+    this.dependencies = [];
+
+    this.expressions.forEach(exp =>
+      this.dependencies.push(
+        ...exp.dependencies.filter(dep => !this.dependencies.includes(dep))
+      )
+    );
+  }
+}
+
+class ResultMap<T> implements EvaluatedExpressionMapInterface<T> {
+  expressions: KeyedMap<T, EvaluatedExpression<T>>;
+
+  plainResult: KeyedMap<T, number>;
+
+  constructor(expressions: KeyedMap<T, EvaluatedExpression<T>>) {
+    this.expressions = expressions;
+
+    this.plainResult = this._getPlainResult();
+  }
+
+  private _getPlainResult = (): KeyedMap<T, number> => {
+    const result: Partial<KeyedMap<T, number>> = {};
+    let key: keyof T;
+    for (key in this.expressions) {
+      result[key] = this.expressions[key].value;
+    }
+    return result as KeyedMap<T, number>;
+  };
+}
+
+class ExpressionMap<T> implements ExpressionMapInterface<T> {
+  expressions: KeyedMap<T, Expression<T>>;
+
+  constructor(expressions: KeyedMap<T, Expression<T>>) {
+    this.expressions = expressions;
+  }
+
+  private _evaluateKey = (
+    key: keyof T,
+    stackedKeys: (keyof T)[] = [],
+    evaluatedKeys: Partial<KeyedMap<T, EvaluatedExpression<T>>> = {}
+  ): EvaluatedExpression<T> => {
+    // Check for circular dependencies
+    if (stackedKeys.includes(key)) {
+      throw new Error(
+        `Encountered circular dependency evaluating key "${String(
+          key
+        )}": ["${stackedKeys.join('", "')}"]`
       );
+    }
+    // Check for existing value
+    if (evaluatedKeys[key] instanceof EvaluatedExpression) {
+      return evaluatedKeys[key];
+    }
+    // Continue recursion
+    const expression = this.expressions[key];
+    const copy = { ...evaluatedKeys };
+    for (const dependencyKey of expression.dependencies) {
+      // Recursion
+      const dependencyResult = this._evaluateKey(
+        dependencyKey,
+        [...stackedKeys, key],
+        copy
+      );
+      copy[dependencyKey] = dependencyResult;
+    }
+    return expression.evaluate(copy);
   };
 
-  evaluateExpirationSumValue = () =>
-    this.getExpirationSumValueEquation()?.evaluate();
+  evaluateKey = (key: keyof T): EvaluatedExpression<T> =>
+    this._evaluateKey(key);
+
+  private _evaluate = () => {
+    const expressionsPartial: Partial<KeyedMap<T, EvaluatedExpression<T>>> = {};
+    let key: keyof T;
+    for (key in this.expressions) {
+      if (this.expressions.hasOwnProperty(key)) {
+        expressionsPartial[key] = this.evaluateKey(key);
+      }
+    }
+    return new ResultMap(
+      expressionsPartial as KeyedMap<T, EvaluatedExpression<T>>
+    );
+  };
+
+  evaluate = () => this._evaluate();
 }
 
-// ACCOUNT
+export class ParameterMap<T> implements ParameterMapInterface<T> {
+  parameters: KeyedMap<T, Parameter<T>>;
+  parameterList: Parameter<T>[];
 
-type AccountParams = Omit<
-  AccountInterface,
-  "accountId" | "startValueParameter" | "userId" | "streams"
-> & {
-  startValueParameter: string;
-  streams: StreamParams[];
-};
+  static MAX_CARDINALITY: number = MAX_CARDINALITY;
 
-export class Account<T> implements AccountInterface {
-  dataset: ParametrizedDataset<T>;
-  accountId: string;
-  accountName: string;
-  startDate: string;
-  startValueParameter: string;
-  userId: string;
-  streams: Stream<T>[];
+  constructor(parameters: KeyedMap<T, ParameterArgumentInterface<T>>) {
+    const parametersPartial: Partial<KeyedMap<T, Parameter<T>>> = {};
+    let key: keyof T;
+    for (key in parameters) {
+      if (parameters.hasOwnProperty(key)) {
+        parametersPartial[key] = new Parameter(key, parameters[key]);
+      }
+    }
+    this.parameters = parametersPartial as KeyedMap<T, Parameter<T>>;
 
-  evaluatedStartValue: number;
-
-  constructor(
-    dataset: ParametrizedDataset<T>,
-    { accountName, startDate, startValueParameter, streams }: AccountParams
-  ) {
-    this.dataset = dataset;
-    this.userId = this.dataset.userId;
-    this.accountId = uuid();
-    this.accountName = accountName;
-    this.startDate = startDate;
-    this.startValueParameter = startValueParameter;
-    this.streams = streams.map(stream => new Stream(this, stream));
-
-    this.evaluatedStartValue = this.evaluateStartValue();
+    this.parameterList = Object.values(this.parameters);
   }
 
-  getStartValueEquation = () =>
-    new Equation(this.startValueParameter, this.dataset.parameters);
+  private _generateExpressionMaps = (): ExpressionMap<T>[] => {
+    const firstMapExpressions: Partial<KeyedMap<T, Expression<T>>> = {};
 
-  evaluateStartValue = () => this.getStartValueEquation().evaluate();
-}
+    const argumentList: Partial<KeyedMap<T, Expression<T>>>[] = [
+      firstMapExpressions,
+    ];
 
-// PARAMETRIZED DATASET
+    for (const parameter of this.parameterList) {
+      for (const expression of parameter.expressions) {
+        if (!firstMapExpressions.hasOwnProperty(parameter.key)) {
+          argumentList.forEach(arg => (arg[parameter.key] = expression));
+        } else {
+          argumentList.push(
+            ...argumentList
+              .filter(arg => arg[parameter.key] === parameter.expressions[0])
+              .map(arg => ({
+                ...arg,
+                [parameter.key]: expression,
+              }))
+          );
+          if (argumentList.length > ParameterMap.MAX_CARDINALITY) {
+            throw new Error(
+              `Max cardinality exceeded: ${ParameterMap.MAX_CARDINALITY}`
+            );
+          }
+        }
+      }
+    }
 
-interface DatasetParams<T> {
-  userId: string;
-  parameters: ParameterParamsMapInterface<T>;
-  accounts: AccountParams[];
-}
+    return argumentList.map(
+      arg => new ExpressionMap(arg as KeyedMap<T, Expression<T>>)
+    );
+  };
 
-export class ParametrizedDataset<T> {
-  userId: string;
-  parameters: ParameterMap<T>;
-  accounts: Account<T>[];
-
-  constructor({
-    userId,
-    parameters: paramsMap,
-    accounts: accountsList,
-  }: DatasetParams<T>) {
-    this.userId = userId;
-    this.parameters = new ParameterMap(userId, paramsMap);
-    this.accounts = accountsList.map(account => new Account(this, account));
-  }
+  evaluate = () =>
+    this._generateExpressionMaps().map(expressionMap =>
+      expressionMap.evaluate()
+    );
 }

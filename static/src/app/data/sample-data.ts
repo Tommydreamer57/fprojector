@@ -1,60 +1,49 @@
-import { ParametrizedDataset } from "@app/data/model-classes";
-import { v4 as uuid } from "uuid";
+import { ParameterMap } from "@app/data/model-classes";
 
-export const sampleDataset = new ParametrizedDataset({
-  userId: uuid(),
-  parameters: {
+export const getSampleData = () =>
+  new ParameterMap({
+    months_to_project: {
+      name: "Months to project",
+      expressions: [""],
+    },
     starting_value: {
-      parameterName: "Current Account Value",
-      value: 48000,
+      name: "Starting Value",
+      expressions: ["48000"],
     },
     base_salary: {
-      parameterName: "Base Yearly Salary",
-      value: 175000,
+      name: "Base Salary",
+      expressions: ["149000", "200000"],
     },
-    expected_raise: {
-      parameterName: "Expected Raise Percentage",
-      value: 7,
+    monthly_salary: {
+      name: "Monthly Salary",
+      expressions: ["base_salary / 12"],
     },
-    bonus_multiplier: {
-      parameterName: "Bonus Multiplier",
-      value: 12.5,
+    rent: {
+      name: "Monthly Rent",
+      expressions: ["900", "1200"],
     },
-  },
-  accounts: [
-    {
-      accountName: "Sample account",
-      startDate: "2024-11-01",
-      startValueParameter: "base_salary",
-      streams: [
-        {
-          streamName: "Primary Income",
-          segments: [
-            {
-              segmentName: "Current Income",
-              valueParameter: "base_salary / 12",
-              frequencyInterval: "biweekly",
-              expirationDate: "2025-03-01",
-            },
-            {
-              segmentName: "Expected Raise",
-              // value: (149000 / 26) * 1.07,
-              valueParameter: "base_salary * (1 + expected_raise / 100) / 12", // need equation support here
-              frequencyInterval: "biweekly",
-            },
-          ],
-        },
-        {
-          streamName: "Bonus",
-          segments: [
-            {
-              valueParameter: "base_salary * bonus_multiplier",
-              frequencyInterval: "once",
-              expirationIntervals: 1,
-            },
-          ],
-        },
+    other_expenses: {
+      name: "Other Expenses",
+      expressions: ["2500"],
+    },
+    total_expenses: {
+      name: "Total Expenses",
+      expressions: ["rent"],
+    },
+    monthly_investment: {
+      name: "Monthly Investment",
+      expressions: ["monthly_salary - total_expenses"],
+    },
+    home_cost: {
+      name: "Home Cost",
+      expressions: [
+        "400000",
+        "450000",
+        "500000",
+        "550000",
+        "600000",
+        "650000",
+        "700000",
       ],
     },
-  ],
-});
+  });
