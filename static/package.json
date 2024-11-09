@@ -9,6 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@types/lodash": "^4.17.13",
+    "chartjs": "^0.3.24",
+    "lodash": "^4.17.21",
     "mathjs": "^13.2.0",
     "next": "15.0.2",
     "react": "19.0.0-rc-02c0e824-20241028",
