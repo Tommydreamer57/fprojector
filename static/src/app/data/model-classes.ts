@@ -41,9 +41,11 @@ const validateScopeObject = <T>(
   }
 };
 
-type ScopeInterface<T, U, V> = Partial<{
+type CompleteResultInterface<T, U, V> = {
   [K in keyof T | keyof U | keyof V]: number;
-}>;
+};
+
+type ScopeInterface<T, U, V> = Partial<CompleteResultInterface<T, U, V>>;
 
 class EvaluatedExpression<T, U, V>
   implements EvaluatedExpressionInterface<T, U, V>
@@ -209,7 +211,7 @@ class ResultMap<T, U, V> implements EvaluatedExpressionMapInterface<T, U, V> {
   pretext: PretextInterface<U>;
   posttext: PretextInterface<V>;
 
-  plainResult: ScopeInterface<T, U, V>;
+  plainResult: CompleteResultInterface<T, U, V>;
 
   hash: string;
 
@@ -228,8 +230,8 @@ class ResultMap<T, U, V> implements EvaluatedExpressionMapInterface<T, U, V> {
     this.hash = this._getHash();
   }
 
-  private _getPlainResult = (): ScopeInterface<T, U, V> => {
-    const result: Partial<ScopeInterface<T, U, V>> = {};
+  private _getPlainResult = (): CompleteResultInterface<T, U, V> => {
+    const result: Partial<CompleteResultInterface<T, U, V>> = {};
     let expKey: keyof T, pretextKey: keyof U, posttextKey: keyof V;
     for (pretextKey in this.pretext) {
       result[pretextKey] = this.pretext[pretextKey];
@@ -240,7 +242,7 @@ class ResultMap<T, U, V> implements EvaluatedExpressionMapInterface<T, U, V> {
     for (expKey in this.expressions) {
       result[expKey] = this.expressions[expKey].value;
     }
-    return result as ScopeInterface<T, U, V>;
+    return result as CompleteResultInterface<T, U, V>;
   };
 
   private _getHash = (): string =>
