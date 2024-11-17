@@ -1,15 +1,17 @@
-import { getInputContext, getMonthContext } from "@app/data/sample-data";
-import { Line as LineGraph } from "react-chartjs-2";
 import {
-  Chart as ChartJS,
   CategoryScale,
+  Chart as ChartJS,
+  Legend,
   LinearScale,
-  PointElement,
   LineElement,
+  PointElement,
   Title,
   Tooltip,
-  Legend,
 } from "chart.js";
+import { Line as LineGraph } from "react-chartjs-2";
+import { Context } from "@app/data/model/classes";
+import { MonthlyResult } from "@app/data/parameters/monthly-parameters";
+import { InputResult } from "@app/data/parameters/input-parameters";
 
 ChartJS.register(
   CategoryScale,
@@ -30,9 +32,21 @@ const lineColors = [
   "#119999",
 ];
 
-export const Graph = ({ monthlyData, inputData, yAxisKey, labels }) => {
+interface GraphProps {
+  monthlyData: MonthlyResult["plainResult"][][];
+  inputData: InputResult[];
+  yAxisKey: string;
+  labels: string[];
+}
+
+export const Graph = ({
+  monthlyData,
+  inputData,
+  yAxisKey,
+  labels,
+}: GraphProps) => {
   return (
-    <div className=" p-4 rounded-xl bg-gray-300 shadow-2xl">
+    <div className="p-4 rounded-xl bg-gray-300 shadow-2xl">
       <LineGraph
         data={{
           datasets: [

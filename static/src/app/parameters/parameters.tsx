@@ -1,66 +1,96 @@
-import { getInputContext, getMonthContext } from "@app/data/sample-data";
-import { Graph } from "@app/parameters/graph";
-import { Section } from "@app/parameters/section";
-import { ExpressionTable } from "@app/parameters/table";
+import { Section } from "@app/components/section";
+import {
+  InputContext,
+  InputResult,
+} from "@app/data/parameters/input-parameters";
+import { MonthlyContext } from "@app/data/parameters/monthly-parameters";
+import { ExpressionTable } from "@app/parameters/expression-table";
+import { groupBy } from "@utils/group";
+import { createSort } from "@utils/sort";
+import * as _ from "lodash";
 
-export const Parameters = () => {
-  const monthContext = getMonthContext();
-  const inputContext = getInputContext();
-  const inputData = inputContext.evaluate();
+interface ParametersProps {
+  monthlyContext: MonthlyContext;
+  inputContext: InputContext;
+  inputData: InputResult[];
+}
 
-  console.log({
-    monthContext,
-    inputData,
-  });
+type ParameterGroup = "comparison" | "constant" | "calculated";
 
-  const monthlyData = inputData.map(dataset =>
-    monthContext.evaluate(dataset.plainResult).map(result => result.plainResult)
+export const Parameters = ({
+  monthlyContext,
+  inputContext,
+  inputData,
+}: ParametersProps) => {
+  const parameterGroups = groupBy(
+    inputContext.parameterList,
+    (param): ParameterGroup =>
+      param.cardinality > 1
+        ? "comparison"
+        : param.constant
+        ? "constant"
+        : "calculated"
   );
 
+  const tables: [string, ParameterGroup][] = [
+    ["Comparison Parameters", "comparison"],
+    ["Constant Parameters", "constant"],
+    ["Calculated Parameters", "calculated"],
+  ];
+
   return (
-    <div>
-      <Section title="Input Parameters">
-        <ExpressionTable
-          expressions={inputContext.parameterList.map(
-            ({ key, name, expressions }) => ({
-              key,
-              name,
-              expressions: expressions.map(exp => exp.expression),
-            })
-          )}
-        />
-      </Section>
-      <Section title="Monthly Parameters">
-        <ExpressionTable
-          expressions={monthContext.parameterList
-            .filter(({ key }) => key !== "month")
-            .map(({ key, name, expressions }) => ({
-              key,
-              name,
-              expressions: expressions.map(exp => exp.expression),
-            }))}
-        />
-      </Section>
-      {[
-        ["Account Value over Time", "account_value"],
-        ["Percent Down over Time", "percent_down"],
-        [
-          "Percent of Income Spent on Mortgage over Time",
-          "mortgage_percent_of_income",
-        ],
-      ].map(([title, key]) => (
-        <Section title={title} key={title}>
-          <Graph
-            key={title}
-            monthlyData={monthlyData}
-            inputData={inputData}
-            yAxisKey={key}
-            labels={monthContext.parameters.month.expressions.map(
-              exp => exp.expression
-            )}
+    <>
+      {tables.map(([title, group]) => (
+        <Section key={title} title={title}>
+          <ExpressionTable
+            expressions={parameterGroups[group]
+              .slice()
+              .sort(
+                createSort(
+                  param => param.cardinality
+                  // param => (param.constant ? 1 : 0),
+                  // param => {
+                  //   switch (param.type) {
+                  //     case "currency":
+                  //       return 0;
+                  //     case "percentage":
+                  //       return -1;
+                  //     case "integer":
+                  //       return -2;
+                  //   }
+                  // }
+                )
+              )
+              .map(({ key, name, type, expressions }) => ({
+                key,
+                name,
+                type,
+                expressions: expressions.map(exp => exp.expression),
+                results: [
+                  ...new Set(
+                    inputData.map(
+                      ({ expressions: { [key]: exp } }) => exp.textValue
+                    )
+                  ),
+                ],
+              }))}
           />
         </Section>
       ))}
-    </div>
+      <Section title="Monthly Parameters">
+        <ExpressionTable
+          expressions={monthlyContext.parameterList
+            .filter(({ key }) => key !== "month")
+            .map(({ key, name, type, expressions }) => ({
+              key,
+              name,
+              type,
+              expressions: expressions.map(exp => exp.expression),
+              results: [],
+            }))}
+          excludeColumns={["results"]}
+        />
+      </Section>
+    </>
   );
 };
